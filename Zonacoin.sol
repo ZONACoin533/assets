@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+
+contract ZONACoin is ERC20, Ownable, ERC20Burnable {
+    uint256 public maxTxAmount; // Максимальная сумма транзакции
+        uint256 public taxPercentage = 5; // 5% налог на транзакции
+            address public marketingWallet; // Адрес для маркетинговых средств
+                address public liquidityWallet; // Адрес для ликвидности
+                    mapping(address => bool) private isExcludedFromTax; // Исключённые из налогообложения адреса
+
+                        constructor() ERC20("ZONA Coin", "ZONA") Ownable(msg.sender) {
+                                uint256 totalSupply = 1_000_000_000 * 10**decimals(); // 1 миллиард токенов
+                                        _mint(msg.sender, totalSupply);
+                                                maxTxAmount = totalSupply / 100; // Лимит 1% от общего предложения
+                                                        marketingWallet = msg.sender;
+                                                                liquidityWallet = msg.sender;
+                                                                        isExcludedFromTax[msg.sender] = true;
+                                                                            }
+
+                                                                                // Переопределение функции transfer с добавлением логики налогообложения
+                                                                                    function transfer(address recipient, uint256 amount) public override returns (bool) {
+                                                                                            _customTransfer(_msgSender(), recipient, amount);
+                                                                                                    return true;
+                                                                                                        }
+
+                                                                                                            // Переопределение transferFrom с добавлением логики налогообложения
+                                                                                                                function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+                                                                                                                        uint256 currentAllowance = allowance(sender, _msgSender());
+                                                                                                                                require(currentAllowance >= amount, "ERC20: transfer amount exceeds allowance");
+                                                                                                                                        _customTransfer(sender, recipient, amount);
+                                                                                                                                                _approve(sender, _msgSender(), currentAllowance - amount);
+                                                                                                                                                        return true;
+                                                                                                                                                            }
+
+                                                                                                                                                                // Логика пользовательского трансфера
+                                                                                                                                                                    function _customTransfer(address sender, address recipient, uint256 amount) internal {
+                                                                                                                                                                            require(amount <= maxTxAmount, "Transaction limit exceeded (anti-dump)");
+                                                                                                                                                                                    require(amount > 0, "Amount must be greater than zero");
+                                                                                                                                                                                            require(recipient != address(0), "Recipient address cannot be zero");
+
+                                                                                                                                                                                                    if (isExcludedFromTax[sender] || isExcludedFromTax[recipient]) {
+                                                                                                                                                                                                                super._transfer(sender, recipient, amount);
+                                                                                                                                                                                                                        } else {
+                                                                                                                                                                                                                                    uint256 taxAmount = (amount * taxPercentage) / 100;
+                                                                                                                                                                                                                                                uint256 sendAmount = amount - taxAmount;
+
+                                                                                                                                                                                                                                                            // Деление налога: 2.5% на маркетинг и 2.5% на ликвидность
+                                                                                                                                                                                                                                                                        uint256 halfTax = taxAmount / 2;
+                                                                                                                                                                                                                                                                                    super._transfer(sender, marketingWallet, halfTax); 
+                                                                                                                                                                                                                                                                                                super._transfer(sender, liquidityWallet, halfTax); 
+                                                                                                                                                                                                                                                                                                            super._transfer(sender, recipient, sendAmount);
+                                                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                                                                        }
+
+                                                                                                                                                                                                                                                                                                                            // Исключить адрес из налога
+                                                                                                                                                                                                                                                                                                                                function excludeFromTax(address account) external onlyOwner {
+                                                                                                                                                                                                                                                                                                                                        isExcludedFromTax[account] = true;
+                                                                                                                                                                                                                                                                                                                                            }
+
+                                                                                                                                                                                                                                                                                                                                                // Включить адрес в налог
+                                                                                                                                                                                                                                                                                                                                                    function includeInTax(address account) external onlyOwner {
+                                                                                                                                                                                                                                                                                                                                                            isExcludedFromTax[account] = false;
+                                                                                                                                                                                                                                                                                                                                                                }
+
+                                                                                                                                                                                                                                                                                                                                                                    // Установить новый процент налога
+                                                                                                                                                                                                                                                                                                                                                                        function setTaxPercentage(uint256 newTax) external onlyOwner {
+                                                                                                                                                                                                                                                                                                                                                                                require(newTax <= 5, "Tax cannot exceed 5%");
+                                                                                                                                                                                                                                                                                                                                                                                        taxPercentage = newTax;
+                                                                                                                                                                                                                                                                                                                                                                                            }
+
+                                                                                                                                                                                                                                                                                                                                                                                                // Установить новый максимум суммы транзакции
+                                                                                                                                                                                                                                                                                                                                                                                                    function setMaxTxAmount(uint256 newMax) external onlyOwner {
+                                                                                                                                                                                                                                                                                                                                                                                                            require(newMax >= totalSupply() / 200, "Minimum limit is 0.5% of total supply");
+                                                                                                                                                                                                                                                                                                                                                                                                                    maxTxAmount = newMax;
+                                                                                                                                                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                                                                                                                                                        }
